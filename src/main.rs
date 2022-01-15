@@ -228,7 +228,7 @@ fn parse_to_instructions(argv: &[&str]) -> Result<Vec<Instruction>> {
     let mut instructions = vec![];
     let mut argv = argv.iter();
     let mut current_instruction: Option<Instruction> = None;
-    let mut level = 0;
+    let mut level;
     while let Some(arg) = argv.next() {
         match *arg {
             "-S" => {
