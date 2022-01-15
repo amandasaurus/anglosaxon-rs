@@ -104,6 +104,44 @@ assert_flow!(
     "1\nNOID\n"
 );
 
+assert_flow!(
+    attribute_with_parent_value1,
+    r#"<notes><note id="1">hello<comment id="10">foo</comment><comment id="11">bar</comment></note><note>hi</note></notes>"#,
+    vec![
+        Instruction::StartTag {
+            tag: "comment".to_string(),
+            actions: vec![
+                Action::Attribute("id".to_string()),
+                Action::RawString(".".to_string()),
+                Action::ParentAttribute(1, "id".to_string()),
+            ]
+        },
+        Instruction::EndTag {
+            tag: "comment".to_string(),
+            actions: vec![Action::RawString("\n".to_string()),]
+        },
+    ],
+    "10.1\n11.1\n"
+);
+
+assert_flow!(
+    start_doc,
+    r#"<notes><note id="1">hello<comment id="10">foo</comment><comment id="11">bar</comment></note><note>hi</note></notes>"#,
+    vec![
+        Instruction::StartDocument {
+            actions: vec![Action::RawString("startdoc".to_string()),]
+        },
+        Instruction::StartTag {
+            tag: "notes".to_string(),
+            actions: vec![Action::RawString(".notes.".to_string()),]
+        },
+        Instruction::EndDocument {
+            actions: vec![Action::RawString("enddoc".to_string()),]
+        },
+    ],
+    "startdoc.notes.enddoc"
+);
+
 mod parse {
     use super::*;
 
@@ -186,6 +224,45 @@ mod parse {
                 attr: "id".to_string(),
                 default: "NOID".to_string()
             },]
+        },]
+    );
+
+    assert_parse!(
+        parent_attr1,
+        "-s note -v ../id",
+        vec![Instruction::StartTag {
+            tag: "note".to_string(),
+            actions: vec![Action::ParentAttribute(1, "id".to_string()),],
+        },]
+    );
+
+    assert_parse!(
+        parent_attr2,
+        "-s note -v ../../id",
+        vec![Instruction::StartTag {
+            tag: "note".to_string(),
+            actions: vec![Action::ParentAttribute(2, "id".to_string()),],
+        },]
+    );
+
+    assert_parse!(
+        parent_attr_with_default1,
+        "-s note -V ../../id NOID",
+        vec![Instruction::StartTag {
+            tag: "note".to_string(),
+            actions: vec![Action::ParentAttributeWithDefault(
+                2,
+                "id".to_string(),
+                "NOID".to_string()
+            ),],
+        },]
+    );
+
+    assert_parse!(
+        start_doc,
+        "-S -o foo",
+        vec![Instruction::StartDocument {
+            actions: vec![Action::RawString("foo".to_string())]
         },]
     );
 }

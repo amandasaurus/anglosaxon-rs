@@ -14,28 +14,109 @@ enum Action {
     RawString(String),
     Attribute(String),
     AttributeWithDefault { attr: String, default: String },
+
+    ParentAttribute(usize, String),
+    ParentAttributeWithDefault(usize, String, String),
+}
+
+impl Action {
+    fn is_parent_attr(&self) -> bool {
+        match self {
+            Action::ParentAttribute(_, _) | Action::ParentAttributeWithDefault(_, _, _) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
 enum Instruction {
+    StartDocument { actions: Vec<Action> },
     StartTag { tag: String, actions: Vec<Action> },
     EndTag { tag: String, actions: Vec<Action> },
+    EndDocument { actions: Vec<Action> },
 }
 
 impl Instruction {
-    fn actions_mut(&mut self) -> &mut Vec<Action> {
+    fn actions(&self) -> &[Action] {
         match self {
+            Instruction::StartDocument { actions } => actions,
             Instruction::StartTag { tag: _, actions } => actions,
             Instruction::EndTag { tag: _, actions } => actions,
+            Instruction::EndDocument { actions } => actions,
         }
     }
+    fn actions_mut(&mut self) -> &mut Vec<Action> {
+        match self {
+            Instruction::StartDocument { actions } => actions,
+            Instruction::StartTag { tag: _, actions } => actions,
+            Instruction::EndTag { tag: _, actions } => actions,
+            Instruction::EndDocument { actions } => actions,
+        }
+    }
+}
+
+fn get_attr<'a>(
+    attributes: &'a [xml::attribute::OwnedAttribute],
+    attr: &str,
+    tag: &str,
+) -> Result<&'a str> {
+    attributes
+        .iter()
+        .filter_map(|a| {
+            if &a.name.local_name == attr {
+                Some(a.value.as_str())
+            } else {
+                None
+            }
+        })
+        .next()
+        .ok_or_else(|| {
+            anyhow!(
+                "No attribute {} found for element {}. Attributes: {}",
+                attr,
+                tag,
+                attributes
+                    .iter()
+                    .map(|a| a.name.local_name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+        })
 }
 
 fn process(instructions: &[Instruction], input: impl Read, mut output: impl Write) -> Result<()> {
     let reader = EventReader::new(input);
 
+    let has_parent_attributes = instructions
+        .iter()
+        .any(|i| i.actions().iter().any(|a| a.is_parent_attr()));
+    let mut parent_attrs: Vec<Vec<xml::attribute::OwnedAttribute>> = vec![];
+    let mut parent_tags: Vec<String> = vec![];
+
     for wev in reader {
         match wev? {
+            XmlEvent::StartDocument {
+                version: _,
+                encoding: _,
+                standalone: _,
+            } => {
+                for instruction in instructions.iter() {
+                    match instruction {
+                        Instruction::StartDocument { actions } => {
+                            for action in actions {
+                                match action {
+                                    Action::RawString(s) => {
+                                        output.write_all(s.as_bytes())?;
+                                    }
+                                    _ => todo!(),
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
             XmlEvent::StartElement {
                 name,
                 attributes,
@@ -50,7 +131,7 @@ fn process(instructions: &[Instruction], input: impl Read, mut output: impl Writ
                                         output.write_all(s.as_bytes())?;
                                     }
                                     Action::Attribute(attr) => {
-                                        let value = attributes.iter().filter_map(|a| if &a.name.local_name == attr { Some(&a.value) } else { None }).next().ok_or_else(|| anyhow!("No attribute {} found for element {}. Attributes: {}", attr, tag, attributes.iter().map(|a| a.name.local_name.as_str()).collect::<Vec<_>>().join(",") ))?;
+                                        let value = get_attr(&attributes, attr, tag)?;
                                         output.write_all(value.as_bytes())?;
                                     }
                                     Action::AttributeWithDefault { attr, default } => {
@@ -69,13 +150,31 @@ fn process(instructions: &[Instruction], input: impl Read, mut output: impl Writ
                                             None => output.write_all(default.as_bytes())?,
                                         }
                                     }
+                                    Action::ParentAttribute(level, attr) => {
+                                        if *level > parent_attrs.len() {
+                                            bail!("")
+                                        }
+                                        let value = get_attr(
+                                            &parent_attrs[parent_attrs.len() - level],
+                                            attr,
+                                            parent_tags[parent_attrs.len() - level].as_str(),
+                                        )?;
+                                        output.write_all(value.as_bytes())?;
+                                    }
+                                    _ => todo!(),
                                 }
                             }
                         }
                         _ => {}
                     }
                 }
+
+                if has_parent_attributes {
+                    parent_attrs.push(attributes);
+                    parent_tags.push(name.local_name);
+                }
             }
+
             XmlEvent::EndElement { name } => {
                 for instruction in instructions.iter() {
                     match instruction {
@@ -94,7 +193,30 @@ fn process(instructions: &[Instruction], input: impl Read, mut output: impl Writ
                         _ => {}
                     }
                 }
+                if has_parent_attributes {
+                    parent_attrs.pop();
+                    parent_tags.pop();
+                }
             }
+
+            XmlEvent::EndDocument => {
+                for instruction in instructions.iter() {
+                    match instruction {
+                        Instruction::EndDocument { actions } => {
+                            for action in actions {
+                                match action {
+                                    Action::RawString(s) => {
+                                        output.write_all(s.as_bytes())?;
+                                    }
+                                    _ => todo!(),
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
             _ => {}
         }
     }
@@ -106,8 +228,15 @@ fn parse_to_instructions(argv: &[&str]) -> Result<Vec<Instruction>> {
     let mut instructions = vec![];
     let mut argv = argv.iter();
     let mut current_instruction: Option<Instruction> = None;
+    let mut level = 0;
     while let Some(arg) = argv.next() {
         match *arg {
+            "-S" => {
+                if let Some(previous) = current_instruction.take() {
+                    instructions.push(previous);
+                }
+                current_instruction = Some(Instruction::StartDocument { actions: vec![] });
+            }
             "-s" => {
                 let tag = argv.next().ok_or(anyhow!("Need an argument for -s"))?;
                 if let Some(previous) = current_instruction.take() {
@@ -127,6 +256,12 @@ fn parse_to_instructions(argv: &[&str]) -> Result<Vec<Instruction>> {
                     tag: tag.to_string(),
                     actions: vec![],
                 });
+            }
+            "-E" => {
+                if let Some(previous) = current_instruction.take() {
+                    instructions.push(previous);
+                }
+                current_instruction = Some(Instruction::EndDocument { actions: vec![] });
             }
 
             "-o" => {
@@ -150,22 +285,31 @@ fn parse_to_instructions(argv: &[&str]) -> Result<Vec<Instruction>> {
             },
 
             "-v" => {
-                let attr = argv.next().ok_or(anyhow!("Need an argument for -v"))?;
+                let mut attr: &str = argv.next().ok_or(anyhow!("Need an argument for -v"))?;
                 match current_instruction {
                     None => {
                         bail!("Cannot use -v before you have done a -s/-e");
                     }
                     Some(ref mut i) => {
-                        i.actions_mut().push(Action::Attribute(attr.to_string()));
+                        level = 0;
+                        while attr.starts_with("../") {
+                            level += 1;
+                            attr = attr.strip_prefix("../").unwrap();
+                        }
+                        if level == 0 {
+                            i.actions_mut().push(Action::Attribute(attr.to_string()));
+                        } else {
+                            i.actions_mut()
+                                .push(Action::ParentAttribute(level, attr.to_string()));
+                        }
                     }
                 }
             }
 
             "-V" => {
-                let attr = argv
+                let mut attr: &str = argv
                     .next()
-                    .ok_or(anyhow!("Need an attribute argument for -V"))?
-                    .to_string();
+                    .ok_or(anyhow!("Need an attribute argument for -V"))?;
                 let default = argv
                     .next()
                     .ok_or(anyhow!("Need a default argument for -V"))?
@@ -175,14 +319,29 @@ fn parse_to_instructions(argv: &[&str]) -> Result<Vec<Instruction>> {
                         bail!("Cannot use -V before you have done a -s/-e");
                     }
                     Some(ref mut i) => {
-                        i.actions_mut()
-                            .push(Action::AttributeWithDefault { attr, default });
+                        level = 0;
+                        while attr.starts_with("../") {
+                            level += 1;
+                            attr = attr.strip_prefix("../").unwrap();
+                        }
+                        if level == 0 {
+                            i.actions_mut().push(Action::AttributeWithDefault {
+                                attr: attr.to_string(),
+                                default,
+                            });
+                        } else {
+                            i.actions_mut().push(Action::ParentAttributeWithDefault(
+                                level,
+                                attr.to_string(),
+                                default,
+                            ));
+                        }
                     }
                 }
             }
 
             arg => {
-                todo!("unknown arg: {}", arg);
+                bail!("unknown arg: {}", arg)
             }
         }
     }
