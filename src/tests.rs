@@ -142,6 +142,27 @@ assert_flow!(
     "startdoc.notes.enddoc"
 );
 
+assert_flow!(
+    attribute_with_parent_value2,
+    r#"<notes><note id="1">hello<comment id="10">foo</comment><comment id="11">bar</comment></note><note>hi<comment id="20">foo</comment></note></notes>"#,
+    vec![
+        Instruction::StartTag {
+            tag: "comment".to_string(),
+            actions: vec![
+                Action::Attribute("id".to_string()),
+                Action::RawString(".".to_string()),
+                Action::ParentAttributeWithDefault(1, "id".to_string(), "NOID".to_string()),
+            ]
+        },
+        Instruction::EndTag {
+            tag: "comment".to_string(),
+            actions: vec![Action::RawString("\n".to_string()),]
+        },
+    ],
+    "10.1\n11.1\n20.NOID\n"
+);
+
+
 mod parse {
     use super::*;
 
@@ -187,6 +208,18 @@ mod parse {
             actions: vec![
                 Action::RawString("notestart".to_string()),
                 Action::RawString("\n".to_string()),
+            ]
+        }]
+    );
+
+    assert_parse!(
+        simple_note4,
+        "-s note -o notestart --tab",
+        vec![Instruction::StartTag {
+            tag: "note".to_string(),
+            actions: vec![
+                Action::RawString("notestart".to_string()),
+                Action::RawString("\t".to_string()),
             ]
         }]
     );

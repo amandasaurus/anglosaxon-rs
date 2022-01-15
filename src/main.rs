@@ -21,10 +21,10 @@ enum Action {
 
 impl Action {
     fn is_parent_attr(&self) -> bool {
-        match self {
-            Action::ParentAttribute(_, _) | Action::ParentAttributeWithDefault(_, _, _) => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            Action::ParentAttribute(_, _) | Action::ParentAttributeWithDefault(_, _, _)
+        )
     }
 }
 
@@ -63,7 +63,7 @@ fn get_attr<'a>(
     attributes
         .iter()
         .filter_map(|a| {
-            if &a.name.local_name == attr {
+            if a.name.local_name == attr {
                 Some(a.value.as_str())
             } else {
                 None
@@ -101,18 +101,15 @@ fn process(instructions: &[Instruction], input: impl Read, mut output: impl Writ
                 standalone: _,
             } => {
                 for instruction in instructions.iter() {
-                    match instruction {
-                        Instruction::StartDocument { actions } => {
-                            for action in actions {
-                                match action {
-                                    Action::RawString(s) => {
-                                        output.write_all(s.as_bytes())?;
-                                    }
-                                    _ => todo!(),
+                    if let Instruction::StartDocument { actions } = instruction {
+                        for action in actions {
+                            match action {
+                                Action::RawString(s) => {
+                                    output.write_all(s.as_bytes())?;
                                 }
+                                _ => todo!(),
                             }
                         }
-                        _ => {}
                     }
                 }
             }
@@ -150,6 +147,7 @@ fn process(instructions: &[Instruction], input: impl Read, mut output: impl Writ
                                             None => output.write_all(default.as_bytes())?,
                                         }
                                     }
+
                                     Action::ParentAttribute(level, attr) => {
                                         if *level > parent_attrs.len() {
                                             bail!("")
@@ -161,7 +159,26 @@ fn process(instructions: &[Instruction], input: impl Read, mut output: impl Writ
                                         )?;
                                         output.write_all(value.as_bytes())?;
                                     }
-                                    _ => todo!(),
+                                    Action::ParentAttributeWithDefault(level, attr, default) => {
+                                        if *level > parent_attrs.len() {
+                                            bail!("")
+                                        }
+                                        match parent_attrs[parent_attrs.len()-level]
+                                            .iter()
+                                            .filter_map(|a| {
+                                                if &a.name.local_name == attr {
+                                                    Some(&a.value)
+                                                } else {
+                                                    None
+                                                }
+                                            })
+                                            .next()
+                                        {
+                                            Some(value) => output.write_all(value.as_bytes())?,
+                                            None => output.write_all(default.as_bytes())?,
+                                        }
+                                    }
+
                                 }
                             }
                         }
@@ -201,18 +218,15 @@ fn process(instructions: &[Instruction], input: impl Read, mut output: impl Writ
 
             XmlEvent::EndDocument => {
                 for instruction in instructions.iter() {
-                    match instruction {
-                        Instruction::EndDocument { actions } => {
-                            for action in actions {
-                                match action {
-                                    Action::RawString(s) => {
-                                        output.write_all(s.as_bytes())?;
-                                    }
-                                    _ => todo!(),
+                    if let Instruction::EndDocument { actions } = instruction {
+                        for action in actions {
+                            match action {
+                                Action::RawString(s) => {
+                                    output.write_all(s.as_bytes())?;
                                 }
+                                _ => todo!(),
                             }
                         }
-                        _ => {}
                     }
                 }
             }
@@ -283,6 +297,15 @@ fn parse_to_instructions(argv: &[&str]) -> Result<Vec<Instruction>> {
                     i.actions_mut().push(Action::RawString("\n".to_string()));
                 }
             },
+            "--tab" => match current_instruction {
+                None => {
+                    bail!("Cannot use --tab before you have done a -s/-e");
+                }
+                Some(ref mut i) => {
+                    i.actions_mut().push(Action::RawString("\t".to_string()));
+                }
+            },
+
 
             "-v" => {
                 let mut attr: &str = argv.next().ok_or(anyhow!("Need an argument for -v"))?;
