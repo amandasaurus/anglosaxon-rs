@@ -91,10 +91,10 @@ assert_flow!(
     vec![
         Instruction::StartTag {
             tag: "note".to_string(),
-            actions: vec![Action::AttributeWithDefault {
-                attr: "id".to_string(),
-                default: "NOID".to_string()
-            },]
+            actions: vec![Action::AttributeWithDefault(
+                "id".to_string(),
+                "NOID".to_string()
+            ),]
         },
         Instruction::EndTag {
             tag: "note".to_string(),
@@ -248,14 +248,46 @@ mod parse {
     );
 
     assert_parse!(
+        value_with_two_tabs,
+        "-s note -v id --tab -v class --tab -v uid --nl",
+        vec![Instruction::StartTag {
+            tag: "note".to_string(),
+            actions: vec![
+                Action::Attribute("id".to_string()),
+                Action::RawString("\t".to_string()),
+                Action::Attribute("class".to_string()),
+                Action::RawString("\t".to_string()),
+                Action::Attribute("uid".to_string()),
+                Action::RawString("\n".to_string()),
+            ]
+        },]
+    );
+
+    assert_parse!(
         value_with_default1,
         "-s note -V id NOID",
         vec![Instruction::StartTag {
             tag: "note".to_string(),
-            actions: vec![Action::AttributeWithDefault {
-                attr: "id".to_string(),
-                default: "NOID".to_string()
-            },]
+            actions: vec![Action::AttributeWithDefault(
+                "id".to_string(),
+                "NOID".to_string()
+            ),]
+        },]
+    );
+
+    assert_parse!(
+        value_with_default_two_tabs,
+        "-s note -V id NOID --tab -V class NOCLASS --tab -V uid NOUID --nl",
+        vec![Instruction::StartTag {
+            tag: "note".to_string(),
+            actions: vec![
+                Action::AttributeWithDefault("id".to_string(), "NOID".to_string()),
+                Action::RawString("\t".to_string()),
+                Action::Attribute("class".to_string()),
+                Action::RawString("\t".to_string()),
+                Action::Attribute("uid".to_string()),
+                Action::RawString("\n".to_string()),
+            ]
         },]
     );
 

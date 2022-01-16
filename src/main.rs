@@ -16,7 +16,7 @@ mod tests;
 enum Action {
     RawString(String),
     Attribute(String),
-    AttributeWithDefault { attr: String, default: String },
+    AttributeWithDefault(String, String),
 
     ParentAttribute(usize, String),
     ParentAttributeWithDefault(usize, String, String),
@@ -135,22 +135,20 @@ fn process(instructions: &[Instruction], input: impl Read, mut output: impl Writ
                                         let value = get_attr(&attributes, attr, tag)?;
                                         output.write_all(value.as_bytes())?;
                                     }
-                                    Action::AttributeWithDefault { attr, default } => {
-                                        match attributes
-                                            .iter()
-                                            .filter_map(|a| {
-                                                if &a.name.local_name == attr {
-                                                    Some(&a.value)
-                                                } else {
-                                                    None
-                                                }
-                                            })
-                                            .next()
-                                        {
-                                            Some(value) => output.write_all(value.as_bytes())?,
-                                            None => output.write_all(default.as_bytes())?,
-                                        }
-                                    }
+                                    Action::AttributeWithDefault(attr, default) => match attributes
+                                        .iter()
+                                        .filter_map(|a| {
+                                            if &a.name.local_name == attr {
+                                                Some(&a.value)
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .next()
+                                    {
+                                        Some(value) => output.write_all(value.as_bytes())?,
+                                        None => output.write_all(default.as_bytes())?,
+                                    },
 
                                     Action::ParentAttribute(level, attr) => {
                                         if *level > parent_attrs.len() {
@@ -349,10 +347,8 @@ fn parse_to_instructions<'a>(argv: impl Into<Option<&'a [&'a str]>>) -> Result<V
                         attr = attr.strip_prefix("../").unwrap();
                     }
                     if level == 0 {
-                        i.actions_mut().push(Action::AttributeWithDefault {
-                            attr: attr.to_string(),
-                            default,
-                        });
+                        i.actions_mut()
+                            .push(Action::AttributeWithDefault(attr.to_string(), default));
                     } else {
                         i.actions_mut().push(Action::ParentAttributeWithDefault(
                             level,
@@ -528,6 +524,7 @@ fn main() -> Result<()> {
         clap_app().print_long_help();
         return Ok(());
     }
+    dbg!(&instructions);
 
     process(&instructions, &mut stdin, stdout)?;
 
