@@ -18,6 +18,10 @@ tools to analyze OSM changesets. As of January 2022, the changesets file is 4
 GB bzip2 compress (40+ GB uncompressed XML), and is too large for DOM based
 tools.
 
+# Installation
+
+	cargo install anglosaxon
+
 # Documention
 
 ``anglosaxon`` reads an xml file from stdin and writes to stdout.

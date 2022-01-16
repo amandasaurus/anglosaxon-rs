@@ -1,5 +1,5 @@
 # anglosaxon Changelog
 
-## Unreleased
+## 0.1.0 (2022-01-16)
 
-* Initial
+* Initial release

@@ -1,6 +1,6 @@
 [package]
 name = "anglosaxon"
-version = "0.1.0-rc1"
+version = "0.1.0"
 edition = "2021"
 license = "AGPL-3.0+"
 repository = "https://github.com/amandasaurus/anglosaxon-rs"
