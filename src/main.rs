@@ -1,9 +1,12 @@
+#![allow(warnings)]
 use std::io::prelude::*;
 
 extern crate anyhow;
+extern crate clap;
 extern crate xml;
 
 use anyhow::{anyhow, bail, Result};
+use clap::{App, Arg};
 use xml::reader::{EventReader, XmlEvent};
 
 #[cfg(test)]
@@ -84,6 +87,7 @@ fn get_attr<'a>(
         })
 }
 
+/// The main "inner main"
 fn process(instructions: &[Instruction], input: impl Read, mut output: impl Write) -> Result<()> {
     let reader = EventReader::new(input);
 
@@ -163,7 +167,7 @@ fn process(instructions: &[Instruction], input: impl Read, mut output: impl Writ
                                         if *level > parent_attrs.len() {
                                             bail!("")
                                         }
-                                        match parent_attrs[parent_attrs.len()-level]
+                                        match parent_attrs[parent_attrs.len() - level]
                                             .iter()
                                             .filter_map(|a| {
                                                 if &a.name.local_name == attr {
@@ -178,7 +182,6 @@ fn process(instructions: &[Instruction], input: impl Read, mut output: impl Writ
                                             None => output.write_all(default.as_bytes())?,
                                         }
                                     }
-
                                 }
                             }
                         }
@@ -238,58 +241,60 @@ fn process(instructions: &[Instruction], input: impl Read, mut output: impl Writ
     Ok(())
 }
 
-fn parse_to_instructions(argv: &[&str]) -> Result<Vec<Instruction>> {
+/// Parses this args (could be argv) to the instructions
+fn parse_to_instructions<'a>(argv: impl Into<Option<&'a [&'a str]>>) -> Result<Vec<Instruction>> {
     let mut instructions = vec![];
-    let mut argv = argv.iter();
+    let app = clap_app();
+    let argv: Option<&[&str]> = argv.into();
+    let args = clap_app_to_ordered_matches(app, argv);
+
     let mut current_instruction: Option<Instruction> = None;
-    let mut level;
-    while let Some(arg) = argv.next() {
-        match *arg {
-            "-S" => {
+    let mut level: usize;
+    let mut args = args.into_iter();
+    while let Some((name, mut value)) = args.next() {
+        //dbg!(&name, &value);
+        match name.as_str() {
+            "startdoc" => {
                 if let Some(previous) = current_instruction.take() {
                     instructions.push(previous);
                 }
                 current_instruction = Some(Instruction::StartDocument { actions: vec![] });
             }
-            "-s" => {
-                let tag = argv.next().ok_or(anyhow!("Need an argument for -s"))?;
+            "startelement" => {
                 if let Some(previous) = current_instruction.take() {
                     instructions.push(previous);
                 }
                 current_instruction = Some(Instruction::StartTag {
-                    tag: tag.to_string(),
+                    tag: value.remove(0),
                     actions: vec![],
                 });
             }
-            "-e" => {
-                let tag = argv.next().ok_or(anyhow!("Need an argument for -e"))?;
+            "endelement" => {
                 if let Some(previous) = current_instruction.take() {
                     instructions.push(previous);
                 }
+                let tag = value.remove(0);
                 current_instruction = Some(Instruction::EndTag {
-                    tag: tag.to_string(),
+                    tag,
                     actions: vec![],
                 });
             }
-            "-E" => {
+            "enddoc" => {
                 if let Some(previous) = current_instruction.take() {
                     instructions.push(previous);
                 }
                 current_instruction = Some(Instruction::EndDocument { actions: vec![] });
             }
 
-            "-o" => {
-                let string = argv.next().ok_or(anyhow!("Need an argument for -o"))?;
-                match current_instruction {
-                    None => {
-                        bail!("Cannot use -o before you have done a -s/-e");
-                    }
-                    Some(ref mut i) => {
-                        i.actions_mut().push(Action::RawString(string.to_string()));
-                    }
+            "raw" => match current_instruction {
+                None => {
+                    bail!("Cannot use -o before you have done a -s/-e");
                 }
-            }
-            "--nl" => match current_instruction {
+                Some(ref mut i) => {
+                    i.actions_mut().push(Action::RawString(value.remove(0)));
+                }
+            },
+            "newline" => match current_instruction {
                 None => {
                     bail!("Cannot use --nl before you have done a -s/-e");
                 }
@@ -297,7 +302,7 @@ fn parse_to_instructions(argv: &[&str]) -> Result<Vec<Instruction>> {
                     i.actions_mut().push(Action::RawString("\n".to_string()));
                 }
             },
-            "--tab" => match current_instruction {
+            "tab" => match current_instruction {
                 None => {
                     bail!("Cannot use --tab before you have done a -s/-e");
                 }
@@ -306,9 +311,10 @@ fn parse_to_instructions(argv: &[&str]) -> Result<Vec<Instruction>> {
                 }
             },
 
-
-            "-v" => {
-                let mut attr: &str = argv.next().ok_or(anyhow!("Need an argument for -v"))?;
+            "value" => {
+                // TODO is it possible do .strip_prefix (equiv.) on String, not just str
+                let attr = value.remove(0);
+                let mut attr = attr.as_str();
                 match current_instruction {
                     None => {
                         bail!("Cannot use -v before you have done a -s/-e");
@@ -329,39 +335,33 @@ fn parse_to_instructions(argv: &[&str]) -> Result<Vec<Instruction>> {
                 }
             }
 
-            "-V" => {
-                let mut attr: &str = argv
-                    .next()
-                    .ok_or(anyhow!("Need an attribute argument for -V"))?;
-                let default = argv
-                    .next()
-                    .ok_or(anyhow!("Need a default argument for -V"))?
-                    .to_string();
-                match current_instruction {
-                    None => {
-                        bail!("Cannot use -V before you have done a -s/-e");
+            "value_with_default" => match current_instruction {
+                None => {
+                    bail!("Cannot use -V before you have done a -s/-e");
+                }
+                Some(ref mut i) => {
+                    let attr = value.remove(0);
+                    let mut attr = attr.as_str();
+                    let default = value.remove(0);
+                    level = 0;
+                    while attr.starts_with("../") {
+                        level += 1;
+                        attr = attr.strip_prefix("../").unwrap();
                     }
-                    Some(ref mut i) => {
-                        level = 0;
-                        while attr.starts_with("../") {
-                            level += 1;
-                            attr = attr.strip_prefix("../").unwrap();
-                        }
-                        if level == 0 {
-                            i.actions_mut().push(Action::AttributeWithDefault {
-                                attr: attr.to_string(),
-                                default,
-                            });
-                        } else {
-                            i.actions_mut().push(Action::ParentAttributeWithDefault(
-                                level,
-                                attr.to_string(),
-                                default,
-                            ));
-                        }
+                    if level == 0 {
+                        i.actions_mut().push(Action::AttributeWithDefault {
+                            attr: attr.to_string(),
+                            default,
+                        });
+                    } else {
+                        i.actions_mut().push(Action::ParentAttributeWithDefault(
+                            level,
+                            attr.to_string(),
+                            default,
+                        ));
                     }
                 }
-            }
+            },
 
             arg => {
                 bail!("unknown arg: {}", arg)
@@ -376,19 +376,158 @@ fn parse_to_instructions(argv: &[&str]) -> Result<Vec<Instruction>> {
     Ok(instructions)
 }
 
-fn main() -> Result<()> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let args: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+fn clap_app_to_ordered_matches(
+    app: clap::App,
+    argv: Option<&[&str]>,
+) -> Vec<(String, Vec<String>)> {
+    let args: Vec<(&str, usize)> = app
+        .get_arguments()
+        .map(|a| {
+            (
+                a.get_name(),
+                a.get_num_vals().unwrap_or_else(|| {
+                    if a.is_set(clap::ArgSettings::TakesValue) {
+                        1
+                    } else {
+                        0
+                    }
+                }),
+            )
+        })
+        .filter(|&(a, _)| a != "version")
+        .collect::<Vec<_>>();
 
-    if args.is_empty() || args == vec!["-h"] {
-        println!("anglosaxon");
-        return Ok(());
+    let matches = match argv {
+        // from CLI args
+        None => app.get_matches(),
+
+        // From the provided args (used for testing)
+        Some(argv) => {
+            let app = app.setting(clap::AppSettings::NoBinaryName);
+            app.get_matches_from(argv)
+        }
+    };
+
+    let mut results = vec![];
+    for (name, num_vals) in args {
+        if matches.occurrences_of(name) == 0 {
+            // argument not used
+            continue;
+        }
+        let indices = matches.indices_of(name).unwrap();
+
+        if num_vals == 0 {
+            results.extend(indices.map(|i| (i, (name.to_string(), vec![]))));
+        } else {
+            let mut values = matches
+                .values_of(name)
+                .unwrap()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>();
+            let mut values = values.chunks(num_vals).collect::<Vec<_>>();
+            results.extend(
+                indices
+                    .zip(values)
+                    .map(|(i, v)| (i, (name.to_string(), v.to_vec()))),
+            );
+        }
     }
 
+    results.sort_by_key(|x| x.0);
+
+    results
+        .into_iter()
+        .map(|(_i, (name, vals))| (name, vals))
+        .collect()
+}
+
+/// Creates our clap app
+fn clap_app() -> clap::App<'static> {
+    App::new("anglosaxon")
+        .arg(
+            Arg::new("startdoc")
+                .short('S').long("startdoc")
+                .help("Event happens once, at the start of the XML document")
+                .takes_value(false)
+                .multiple_occurrences(true)
+                .use_delimiter(false),
+        )
+        .arg(
+            Arg::new("startelement")
+                .short('s').long("start")
+                .help("Event happens when this tag is opened")
+                .takes_value(true).value_name("TAG")
+                .multiple_occurrences(true)
+                .use_delimiter(false),
+        )
+        .arg(
+            Arg::new("endelement")
+                .short('e').long("end")
+                .help("Event happens when this tag is closed")
+                .takes_value(true).value_name("TAG")
+                .multiple_occurrences(true)
+                .use_delimiter(false),
+        )
+        .arg(
+            Arg::new("enddoc")
+                .short('E').long("enddoc")
+                .help("Event happens once, at the end of the XML document")
+                .takes_value(false)
+                .multiple_occurrences(true)
+                .use_delimiter(false),
+        )
+        .arg(
+            Arg::new("raw")
+                .short('o').long("output")
+                .help("Outputs this string")
+                .takes_value(true).value_name("STRING")
+                .multiple_occurrences(true)
+                .use_delimiter(false),
+        )
+        .arg(
+            Arg::new("value")
+                .short('v').long("value")
+                .help("Outputs the value of this XML attribute, an error occurs if that attribute isn't present")
+                .value_name("ATTRIBUTE")
+                .takes_value(true)
+                .multiple_occurrences(true)
+                .use_delimiter(false),
+        )
+        .arg(
+            Arg::new("value_with_default")
+                .short('V').long("value-default")
+                .help("Outputs this string")
+                .takes_value(true)
+                .value_name("ATTRIBUTE DEFAULT")
+                .number_of_values(2)
+                .multiple_occurrences(true)
+                .use_delimiter(false),
+        )
+        .arg(
+            Arg::new("newline")
+                .long("nl")
+                .help("Outputs a new line character")
+                .takes_value(false)
+                .multiple_occurrences(true),
+        )
+        .arg(
+            Arg::new("tab")
+                .long("tab")
+                .help("Outputs a tab character")
+                .takes_value(false)
+                .multiple_occurrences(true),
+        )
+}
+
+fn main() -> Result<()> {
     let mut stdin = std::io::stdin();
     let stdout = std::io::stdout();
 
-    let instructions = parse_to_instructions(args.as_slice())?;
+    let instructions = parse_to_instructions(None)?;
+    if instructions.is_empty() {
+        clap_app().print_long_help();
+        return Ok(());
+    }
 
     process(&instructions, &mut stdin, stdout)?;
 

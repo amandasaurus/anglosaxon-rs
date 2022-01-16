@@ -162,7 +162,6 @@ assert_flow!(
     "10.1\n11.1\n20.NOID\n"
 );
 
-
 mod parse {
     use super::*;
 
@@ -172,7 +171,7 @@ mod parse {
             fn $name() {
                 let input = $input;
                 let input: Vec<_> = input.split(" ").collect();
-                let actual_output = parse_to_instructions(&input).unwrap();
+                let actual_output = parse_to_instructions(input.as_slice()).unwrap();
 
                 assert_eq!(actual_output, $expected_output);
             }
