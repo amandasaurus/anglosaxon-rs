@@ -1,4 +1,6 @@
-# anglosaxon
+# anglosaxon - Convert large XML files to other formats
+
+![Crates.io](https://img.shields.io/crates/d/anglosaxon)
 
 `anglosaxon` is a command line tool to parse XML files using SAX. You can do
 simple transformations of XML files into other textual formats in a streaming
