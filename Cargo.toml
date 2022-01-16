@@ -2,8 +2,10 @@
 name = "anglosaxon"
 version = "0.1.0-rc1"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "AGPL-3.0+"
+repository = "https://github.com/amandasaurus/anglosaxon-rs"
+authors = ["Amanda McCann <amanda@technomancy.org>"]
+description = "Convert XML files to text with ad-hoc streaming SAX parser"
 
 [dependencies]
 xml-rs ="0.8"
