@@ -1,4 +1,3 @@
-#![allow(warnings)]
 use std::io::prelude::*;
 
 extern crate anyhow;
@@ -248,9 +247,7 @@ fn parse_to_instructions<'a>(argv: impl Into<Option<&'a [&'a str]>>) -> Result<V
 
     let mut current_instruction: Option<Instruction> = None;
     let mut level: usize;
-    let mut args = args.into_iter();
-    while let Some((name, mut value)) = args.next() {
-        //dbg!(&name, &value);
+    for (name, mut value) in args.into_iter() {
         match name.as_str() {
             "startdoc" => {
                 if let Some(previous) = current_instruction.take() {
@@ -417,12 +414,12 @@ fn clap_app_to_ordered_matches(
         } else {
             let indices = indices.collect::<Vec<_>>();
             let indices = indices.chunks(num_vals).collect::<Vec<_>>();
-            let mut values = matches
+            let values = matches
                 .values_of(name)
                 .unwrap()
                 .map(|v| v.to_string())
                 .collect::<Vec<_>>();
-            let mut values = values.chunks(num_vals).collect::<Vec<_>>();
+            let values = values.chunks(num_vals).collect::<Vec<_>>();
             results.extend(
                 indices
                     .iter()
@@ -524,10 +521,9 @@ fn main() -> Result<()> {
 
     let instructions = parse_to_instructions(None)?;
     if instructions.is_empty() {
-        clap_app().print_long_help();
+        clap_app().print_long_help()?;
         return Ok(());
     }
-    //dbg!(&instructions);
 
     process(&instructions, &mut stdin, stdout)?;
 
