@@ -283,9 +283,9 @@ mod parse {
             actions: vec![
                 Action::AttributeWithDefault("id".to_string(), "NOID".to_string()),
                 Action::RawString("\t".to_string()),
-                Action::Attribute("class".to_string()),
+                Action::AttributeWithDefault("class".to_string(), "NOCLASS".to_string()),
                 Action::RawString("\t".to_string()),
-                Action::Attribute("uid".to_string()),
+                Action::AttributeWithDefault("uid".to_string(), "NOUID".to_string()),
                 Action::RawString("\n".to_string()),
             ]
         },]

@@ -415,6 +415,8 @@ fn clap_app_to_ordered_matches(
         if num_vals == 0 {
             results.extend(indices.map(|i| (i, (name.to_string(), vec![]))));
         } else {
+            let indices = indices.collect::<Vec<_>>();
+            let indices = indices.chunks(num_vals).collect::<Vec<_>>();
             let mut values = matches
                 .values_of(name)
                 .unwrap()
@@ -423,8 +425,9 @@ fn clap_app_to_ordered_matches(
             let mut values = values.chunks(num_vals).collect::<Vec<_>>();
             results.extend(
                 indices
+                    .iter()
                     .zip(values)
-                    .map(|(i, v)| (i, (name.to_string(), v.to_vec()))),
+                    .map(|(i, v)| (i[0], (name.to_string(), v.to_vec()))),
             );
         }
     }
@@ -524,7 +527,7 @@ fn main() -> Result<()> {
         clap_app().print_long_help();
         return Ok(());
     }
-    dbg!(&instructions);
+    //dbg!(&instructions);
 
     process(&instructions, &mut stdin, stdout)?;
 
