@@ -5,7 +5,7 @@ extern crate clap;
 extern crate xml;
 
 use anyhow::{anyhow, bail, Result};
-use clap::{Command, Arg};
+use clap::{Arg, Command};
 use xml::reader::{EventReader, XmlEvent};
 
 #[cfg(test)]
