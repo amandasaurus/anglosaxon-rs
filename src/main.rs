@@ -5,7 +5,7 @@ extern crate clap;
 extern crate xml;
 
 use anyhow::{anyhow, bail, Result};
-use clap::{App, Arg};
+use clap::{Command, Arg};
 use xml::reader::{EventReader, XmlEvent};
 
 #[cfg(test)]
@@ -438,8 +438,10 @@ fn clap_app_to_ordered_matches(
 }
 
 /// Creates our clap app
-fn clap_app() -> clap::App<'static> {
-    App::new("anglosaxon")
+fn clap_app() -> clap::Command<'static> {
+    Command::new("anglosaxon")
+        .about(clap::crate_description!())
+        .long_about("`anglosaxon` is a command line tool to parse XML files using SAX. You can do\nsimple transformations of XML files into other textual formats in a streaming\nformat. Since it uses SAX it doesn't load the entire XML file into memory\nbefore processing, so it can work with large XML files, like some of the\nOpenStreetMap data dump files.")
         .arg(
             Arg::new("startdoc")
                 .short('S').long("startdoc")
