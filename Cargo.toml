@@ -5,7 +5,7 @@ edition = "2021"
 license = "AGPL-3.0+"
 repository = "https://github.com/amandasaurus/anglosaxon-rs"
 authors = ["Amanda McCann <amanda@technomancy.org>"]
-description = "Convert XML files to text with ad-hoc streaming SAX parser"
+description = "Convert XML files on stdin to text on stdout with ad-hoc streaming SAX parser"
 
 [dependencies]
 xml-rs ="0.8"

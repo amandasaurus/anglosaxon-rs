@@ -457,7 +457,7 @@ fn clap_app_to_ordered_matches(
 fn clap_app() -> clap::Command<'static> {
     Command::new("anglosaxon")
         .about(clap::crate_description!())
-        .long_about("`anglosaxon` is a command line tool to parse XML files using SAX. You can do\nsimple transformations of XML files into other textual formats in a streaming\nformat. Since it uses SAX it doesn't load the entire XML file into memory\nbefore processing, so it can work with large XML files, like some of the\nOpenStreetMap data dump files.")
+        .long_about("Convert XML files on stdin to text on stdout with ad-hoc streaming SAX parser. e.g.\n\n    bzcat ~/osm/data/changeset-examples.osm.bz2  | anglosaxon -S -o changeset_id,tag_key,tag_value --nl -s tag -v ../id -o,  -v k -o , -v v --nl\n\n")
         .arg(
             Arg::new("startdoc")
                 .short('S').long("startdoc")
