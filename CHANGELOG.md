@@ -1,5 +1,9 @@
 # anglosaxon Changelog
 
+## Unreleased
+
+* Support `-v ./ATTR`
+
 ## 0.1.1 (2022-09-03)
 
 * Minor document improvement

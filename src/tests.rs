@@ -248,6 +248,15 @@ mod parse {
     );
 
     assert_parse!(
+        value2,
+        "-s note -v ./id",
+        vec![Instruction::StartTag {
+            tag: "note".to_string(),
+            actions: vec![Action::Attribute("id".to_string()),]
+        },]
+    );
+
+    assert_parse!(
         value_with_two_tabs,
         "-s note -v id --tab -v class --tab -v uid --nl",
         vec![Instruction::StartTag {
@@ -266,6 +275,18 @@ mod parse {
     assert_parse!(
         value_with_default1,
         "-s note -V id NOID",
+        vec![Instruction::StartTag {
+            tag: "note".to_string(),
+            actions: vec![Action::AttributeWithDefault(
+                "id".to_string(),
+                "NOID".to_string()
+            ),]
+        },]
+    );
+
+    assert_parse!(
+        value_with_default2,
+        "-s note -V ./id NOID",
         vec![Instruction::StartTag {
             tag: "note".to_string(),
             actions: vec![Action::AttributeWithDefault(

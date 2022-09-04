@@ -316,9 +316,17 @@ fn parse_to_instructions<'a>(argv: impl Into<Option<&'a [&'a str]>>) -> Result<V
                     }
                     Some(ref mut i) => {
                         level = 0;
-                        while attr.starts_with("../") {
-                            level += 1;
-                            attr = attr.strip_prefix("../").unwrap();
+                        loop {
+                            if attr.starts_with("../") {
+                                level += 1;
+                                attr = attr.strip_prefix("../").unwrap();
+                                continue;
+                            } else if attr.starts_with("./") {
+                                attr = attr.strip_prefix("./").unwrap();
+                                continue;
+                            } else {
+                                break;
+                            }
                         }
                         if level == 0 {
                             i.actions_mut().push(Action::Attribute(attr.to_string()));
@@ -339,9 +347,17 @@ fn parse_to_instructions<'a>(argv: impl Into<Option<&'a [&'a str]>>) -> Result<V
                     let mut attr = attr.as_str();
                     let default = value.remove(0);
                     level = 0;
-                    while attr.starts_with("../") {
-                        level += 1;
-                        attr = attr.strip_prefix("../").unwrap();
+                    loop {
+                        if attr.starts_with("../") {
+                            level += 1;
+                            attr = attr.strip_prefix("../").unwrap();
+                            continue;
+                        } else if attr.starts_with("./") {
+                            attr = attr.strip_prefix("./").unwrap();
+                            continue;
+                        } else {
+                            break;
+                        }
                     }
                     if level == 0 {
                         i.actions_mut()
