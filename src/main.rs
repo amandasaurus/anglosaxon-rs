@@ -6,6 +6,8 @@ extern crate xml;
 
 use anyhow::{anyhow, bail, Result};
 use clap::{Arg, Command};
+use std::borrow::Cow;
+use std::str::FromStr;
 use xml::reader::{EventReader, XmlEvent};
 
 #[cfg(test)]
@@ -14,19 +16,96 @@ mod tests;
 #[derive(Debug, Eq, PartialEq)]
 enum Action {
     RawString(String),
-    Attribute(String),
-    AttributeWithDefault(String, String),
+    Attribute(String, Filters),
+    AttributeWithDefault(String, String, Filters),
 
-    ParentAttribute(usize, String),
-    ParentAttributeWithDefault(usize, String, String),
+    ParentAttribute(usize, String, Filters),
+    ParentAttributeWithDefault(usize, String, String, Filters),
 }
 
 impl Action {
     fn is_parent_attr(&self) -> bool {
         matches!(
             self,
-            Action::ParentAttribute(_, _) | Action::ParentAttributeWithDefault(_, _, _)
+            Action::ParentAttribute(_, _, _) | Action::ParentAttributeWithDefault(_, _, _, _)
         )
+    }
+}
+
+#[derive(PartialEq, Eq, Default, Debug)]
+enum TextFilter {
+    #[default]
+    Nothing,
+    UnixEscape,
+
+    TSVEscape,
+}
+
+impl FromStr for TextFilter {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "nothing" | "none" => Ok(TextFilter::Nothing),
+            "unix" => Ok(TextFilter::UnixEscape),
+            "tsv" => Ok(TextFilter::TSVEscape),
+
+            x => anyhow::bail!("Unknown filter {}", x),
+        }
+    }
+}
+
+impl TextFilter {
+    fn apply<'a>(&self, s: Cow<'a, str>) -> Cow<'a, str> {
+        match self {
+            TextFilter::Nothing => s,
+            TextFilter::UnixEscape => {
+                // TODO make this not copy
+                Cow::Owned(s.escape_default().to_string())
+            }
+            TextFilter::TSVEscape => {
+                if s.chars()
+                    .any(|c| c == '\n' || c == '\t' || c == '\r' || c == '\\')
+                {
+                    let new_s = s
+                        .replace('\n', "\\n")
+                        .replace('\t', "\\t")
+                        .replace('\r', "\\r");
+                    Cow::Owned(new_s)
+                } else {
+                    s
+                }
+            }
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Default, Debug)]
+struct Filters(Vec<TextFilter>);
+
+impl Filters {
+    /// Parse out the attribute & the text filters
+    fn parse_both(s: &str) -> Result<(String, Self)> {
+        if !s.contains('!') {
+            // no ! → no filters → short circuit
+            return Ok((s.to_string(), Filters::default()));
+        }
+        let splits: Vec<&str> = s.split('!').collect();
+        anyhow::ensure!(splits.len() >= 2);
+        let filters = Filters(
+            splits[1..]
+                .iter()
+                .map(|s| s.parse())
+                .collect::<Result<_, _>>()?,
+        );
+        Ok((splits[0].to_string(), filters))
+    }
+
+    fn apply<'a>(&self, s: impl Into<Cow<'a, str>>) -> Cow<'a, str> {
+        let mut s: Cow<'a, str> = s.into();
+        for f in self.0.iter() {
+            s = f.apply(s);
+        }
+        s
     }
 }
 
@@ -130,41 +209,13 @@ fn process(instructions: &[Instruction], input: impl Read, mut output: impl Writ
                                     Action::RawString(s) => {
                                         output.write_all(s.as_bytes())?;
                                     }
-                                    Action::Attribute(attr) => {
+                                    Action::Attribute(attr, filters) => {
                                         let value = get_attr(&attributes, attr, tag)?;
+                                        let value = filters.apply(value);
                                         output.write_all(value.as_bytes())?;
                                     }
-                                    Action::AttributeWithDefault(attr, default) => match attributes
-                                        .iter()
-                                        .filter_map(|a| {
-                                            if &a.name.local_name == attr {
-                                                Some(&a.value)
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                        .next()
-                                    {
-                                        Some(value) => output.write_all(value.as_bytes())?,
-                                        None => output.write_all(default.as_bytes())?,
-                                    },
-
-                                    Action::ParentAttribute(level, attr) => {
-                                        if *level > parent_attrs.len() {
-                                            bail!("")
-                                        }
-                                        let value = get_attr(
-                                            &parent_attrs[parent_attrs.len() - level],
-                                            attr,
-                                            parent_tags[parent_attrs.len() - level].as_str(),
-                                        )?;
-                                        output.write_all(value.as_bytes())?;
-                                    }
-                                    Action::ParentAttributeWithDefault(level, attr, default) => {
-                                        if *level > parent_attrs.len() {
-                                            bail!("")
-                                        }
-                                        match parent_attrs[parent_attrs.len() - level]
+                                    Action::AttributeWithDefault(attr, default, filters) => {
+                                        let value = attributes
                                             .iter()
                                             .filter_map(|a| {
                                                 if &a.name.local_name == attr {
@@ -174,10 +225,45 @@ fn process(instructions: &[Instruction], input: impl Read, mut output: impl Writ
                                                 }
                                             })
                                             .next()
-                                        {
-                                            Some(value) => output.write_all(value.as_bytes())?,
-                                            None => output.write_all(default.as_bytes())?,
+                                            .unwrap_or(default);
+                                        let value = filters.apply(value);
+                                        output.write_all(value.as_bytes())?;
+                                    }
+
+                                    Action::ParentAttribute(level, attr, filters) => {
+                                        if *level > parent_attrs.len() {
+                                            bail!("")
                                         }
+                                        let value = get_attr(
+                                            &parent_attrs[parent_attrs.len() - level],
+                                            attr,
+                                            parent_tags[parent_attrs.len() - level].as_str(),
+                                        )?;
+                                        let value = filters.apply(value);
+                                        output.write_all(value.as_bytes())?;
+                                    }
+                                    Action::ParentAttributeWithDefault(
+                                        level,
+                                        attr,
+                                        default,
+                                        filters,
+                                    ) => {
+                                        if *level > parent_attrs.len() {
+                                            bail!("")
+                                        }
+                                        let value = parent_attrs[parent_attrs.len() - level]
+                                            .iter()
+                                            .filter_map(|a| {
+                                                if &a.name.local_name == attr {
+                                                    Some(&a.value)
+                                                } else {
+                                                    None
+                                                }
+                                            })
+                                            .next()
+                                            .unwrap_or(default);
+                                        let value = filters.apply(value);
+                                        output.write_all(value.as_bytes())?;
                                     }
                                 }
                             }
@@ -328,11 +414,16 @@ fn parse_to_instructions<'a>(argv: impl Into<Option<&'a [&'a str]>>) -> Result<V
                                 break;
                             }
                         }
+                        let (attr, filters) = Filters::parse_both(attr)?;
                         if level == 0 {
-                            i.actions_mut().push(Action::Attribute(attr.to_string()));
-                        } else {
                             i.actions_mut()
-                                .push(Action::ParentAttribute(level, attr.to_string()));
+                                .push(Action::Attribute(attr.to_string(), filters));
+                        } else {
+                            i.actions_mut().push(Action::ParentAttribute(
+                                level,
+                                attr.to_string(),
+                                filters,
+                            ));
                         }
                     }
                 }
@@ -359,14 +450,19 @@ fn parse_to_instructions<'a>(argv: impl Into<Option<&'a [&'a str]>>) -> Result<V
                             break;
                         }
                     }
+                    let (attr, filters) = Filters::parse_both(attr)?;
                     if level == 0 {
-                        i.actions_mut()
-                            .push(Action::AttributeWithDefault(attr.to_string(), default));
+                        i.actions_mut().push(Action::AttributeWithDefault(
+                            attr.to_string(),
+                            default,
+                            filters,
+                        ));
                     } else {
                         i.actions_mut().push(Action::ParentAttributeWithDefault(
                             level,
                             attr.to_string(),
                             default,
+                            filters,
                         ));
                     }
                 }

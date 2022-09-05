@@ -75,7 +75,7 @@ assert_flow!(
     vec![
         Instruction::StartTag {
             tag: "note".to_string(),
-            actions: vec![Action::Attribute("id".to_string()),]
+            actions: vec![Action::Attribute("id".to_string(), Filters::default()),]
         },
         Instruction::EndTag {
             tag: "note".to_string(),
@@ -93,7 +93,8 @@ assert_flow!(
             tag: "note".to_string(),
             actions: vec![Action::AttributeWithDefault(
                 "id".to_string(),
-                "NOID".to_string()
+                "NOID".to_string(),
+                Filters::default()
             ),]
         },
         Instruction::EndTag {
@@ -111,9 +112,9 @@ assert_flow!(
         Instruction::StartTag {
             tag: "comment".to_string(),
             actions: vec![
-                Action::Attribute("id".to_string()),
+                Action::Attribute("id".to_string(), Filters::default()),
                 Action::RawString(".".to_string()),
-                Action::ParentAttribute(1, "id".to_string()),
+                Action::ParentAttribute(1, "id".to_string(), Filters::default()),
             ]
         },
         Instruction::EndTag {
@@ -149,9 +150,14 @@ assert_flow!(
         Instruction::StartTag {
             tag: "comment".to_string(),
             actions: vec![
-                Action::Attribute("id".to_string()),
+                Action::Attribute("id".to_string(), Filters::default()),
                 Action::RawString(".".to_string()),
-                Action::ParentAttributeWithDefault(1, "id".to_string(), "NOID".to_string()),
+                Action::ParentAttributeWithDefault(
+                    1,
+                    "id".to_string(),
+                    "NOID".to_string(),
+                    Filters::default()
+                ),
             ]
         },
         Instruction::EndTag {
@@ -160,6 +166,41 @@ assert_flow!(
         },
     ],
     "10.1\n11.1\n20.NOID\n"
+);
+
+assert_flow!(
+    attribute_with_filter1,
+    r#"<notes><note id="1">hello</note><note id="2">hi</note></notes>"#,
+    vec![
+        Instruction::StartTag {
+            tag: "note".to_string(),
+            actions: vec![Action::Attribute("id".to_string(), Filters::default()),]
+        },
+        Instruction::EndTag {
+            tag: "note".to_string(),
+            actions: vec![Action::RawString("\n".to_string()),]
+        },
+    ],
+    "1\n2\n"
+);
+
+assert_flow!(
+    attribute_with_filter2,
+    "<notes><note author=\"foo\nbar\">hello</note><note author=\"ok\">hi</note></notes>",
+    vec![
+        Instruction::StartTag {
+            tag: "note".to_string(),
+            actions: vec![Action::Attribute(
+                "author".to_string(),
+                Filters(vec![TextFilter::TSVEscape])
+            ),]
+        },
+        Instruction::EndTag {
+            tag: "note".to_string(),
+            actions: vec![Action::RawString("\n".to_string()),]
+        },
+    ],
+    "foo\\nbar\nok\n"
 );
 
 mod parse {
@@ -171,7 +212,7 @@ mod parse {
             fn $name() {
                 let input = $input;
                 let input: Vec<_> = input.split(" ").collect();
-                let actual_output = parse_to_instructions(input.as_slice()).unwrap();
+                let (_config, actual_output) = parse_to_instructions(input.as_slice()).unwrap();
 
                 assert_eq!(actual_output, $expected_output);
             }
@@ -243,7 +284,7 @@ mod parse {
         "-s note -v id",
         vec![Instruction::StartTag {
             tag: "note".to_string(),
-            actions: vec![Action::Attribute("id".to_string()),]
+            actions: vec![Action::Attribute("id".to_string(), Filters::default()),]
         },]
     );
 
@@ -252,7 +293,19 @@ mod parse {
         "-s note -v ./id",
         vec![Instruction::StartTag {
             tag: "note".to_string(),
-            actions: vec![Action::Attribute("id".to_string()),]
+            actions: vec![Action::Attribute("id".to_string(), Filters::default()),]
+        },]
+    );
+
+    assert_parse!(
+        value_filter1,
+        "-s note -v ./id!tsv",
+        vec![Instruction::StartTag {
+            tag: "note".to_string(),
+            actions: vec![Action::Attribute(
+                "id".to_string(),
+                Filters(vec![TextFilter::TSVEscape])
+            ),]
         },]
     );
 
@@ -262,11 +315,11 @@ mod parse {
         vec![Instruction::StartTag {
             tag: "note".to_string(),
             actions: vec![
-                Action::Attribute("id".to_string()),
+                Action::Attribute("id".to_string(), Filters::default()),
                 Action::RawString("\t".to_string()),
-                Action::Attribute("class".to_string()),
+                Action::Attribute("class".to_string(), Filters::default()),
                 Action::RawString("\t".to_string()),
-                Action::Attribute("uid".to_string()),
+                Action::Attribute("uid".to_string(), Filters::default()),
                 Action::RawString("\n".to_string()),
             ]
         },]
@@ -279,7 +332,8 @@ mod parse {
             tag: "note".to_string(),
             actions: vec![Action::AttributeWithDefault(
                 "id".to_string(),
-                "NOID".to_string()
+                "NOID".to_string(),
+                Filters::default()
             ),]
         },]
     );
@@ -291,7 +345,8 @@ mod parse {
             tag: "note".to_string(),
             actions: vec![Action::AttributeWithDefault(
                 "id".to_string(),
-                "NOID".to_string()
+                "NOID".to_string(),
+                Filters::default()
             ),]
         },]
     );
@@ -302,11 +357,23 @@ mod parse {
         vec![Instruction::StartTag {
             tag: "note".to_string(),
             actions: vec![
-                Action::AttributeWithDefault("id".to_string(), "NOID".to_string()),
+                Action::AttributeWithDefault(
+                    "id".to_string(),
+                    "NOID".to_string(),
+                    Filters::default()
+                ),
                 Action::RawString("\t".to_string()),
-                Action::AttributeWithDefault("class".to_string(), "NOCLASS".to_string()),
+                Action::AttributeWithDefault(
+                    "class".to_string(),
+                    "NOCLASS".to_string(),
+                    Filters::default()
+                ),
                 Action::RawString("\t".to_string()),
-                Action::AttributeWithDefault("uid".to_string(), "NOUID".to_string()),
+                Action::AttributeWithDefault(
+                    "uid".to_string(),
+                    "NOUID".to_string(),
+                    Filters::default()
+                ),
                 Action::RawString("\n".to_string()),
             ]
         },]
@@ -317,7 +384,11 @@ mod parse {
         "-s note -v ../id",
         vec![Instruction::StartTag {
             tag: "note".to_string(),
-            actions: vec![Action::ParentAttribute(1, "id".to_string()),],
+            actions: vec![Action::ParentAttribute(
+                1,
+                "id".to_string(),
+                Filters::default()
+            ),],
         },]
     );
 
@@ -326,7 +397,11 @@ mod parse {
         "-s note -v ../../id",
         vec![Instruction::StartTag {
             tag: "note".to_string(),
-            actions: vec![Action::ParentAttribute(2, "id".to_string()),],
+            actions: vec![Action::ParentAttribute(
+                2,
+                "id".to_string(),
+                Filters::default()
+            ),],
         },]
     );
 
@@ -338,7 +413,8 @@ mod parse {
             actions: vec![Action::ParentAttributeWithDefault(
                 2,
                 "id".to_string(),
-                "NOID".to_string()
+                "NOID".to_string(),
+                Filters::default()
             ),],
         },]
     );
@@ -350,4 +426,48 @@ mod parse {
             actions: vec![Action::RawString("foo".to_string())]
         },]
     );
+}
+
+mod filters {
+    use super::*;
+    #[test]
+    fn parse1() {
+        assert_eq!(
+            Filters::parse_both("id!none").unwrap(),
+            ("id".to_string(), Filters(vec![TextFilter::Nothing]))
+        );
+        assert_eq!(
+            Filters::parse_both("id!none!none").unwrap(),
+            (
+                "id".to_string(),
+                Filters(vec![TextFilter::Nothing, TextFilter::Nothing])
+            )
+        );
+    }
+
+    macro_rules! assert_filter {
+        ($name:ident, $filters:expr, $input:expr, $expected_output:expr) => {
+            #[test]
+            fn $name() {
+                let input = $input;
+                let expected_output = $expected_output;
+                let ff = Filters::parse_both($filters).unwrap();
+                let filters = ff.1;
+                assert_eq!(filters.apply(input), $expected_output);
+            }
+        };
+    }
+
+    assert_filter!(empty1, "x", "foo", "foo");
+    assert_filter!(empty2, "x!none", "foo", "foo");
+
+    assert_filter!(unix1, "x!unix", "foo", "foo");
+    assert_filter!(unix2, "x!unix", "foo bar", "foo bar");
+    assert_filter!(unix3, "x!unix", "foo\tbar", "foo\\tbar");
+    assert_filter!(unix4, "x!unix", "foo\rbar", "foo\\rbar");
+
+    assert_filter!(tsv1, "x!tsv", "foo bar", "foo bar");
+    assert_filter!(tsv2, "x!tsv", "foo\rbar", "foo\\rbar");
+    assert_filter!(tsv3, "x!tsv", "foo\tbar", "foo\\tbar");
+    assert_filter!(tsv4, "x!tsv", "foo\" \"bar", "foo\" \"bar");
 }
