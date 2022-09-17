@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+* Pipe attributes through simple text filters, so your text is escaped properly
 * Support `-v ./ATTR`
 
 ## 0.1.1 (2022-09-03)
