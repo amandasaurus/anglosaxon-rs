@@ -51,6 +51,16 @@ One or more actions can be specified and are processed in the order you give.
 
 XML Attributes are plain text. Parent node attributes are specified by `../ATTRIBUTE` (e.g. `../../id` is the `id` attribute of the XML node that's the parent of the parent of the current XML node). An error occurs if this required parent doesn't exist.
 
+### Attribute Filters
+
+When outputting attributes (with `-v`/`-V`), simple text filters can be applied with the `!` character. e.g. `-v username!tsv` will use the `tsv` filter on the `username` XML attribute. NB: `!` is used in bash, so often must be escaped like `-v username\!tsv`.
+
+Current filters:
+
+* `none`: Does nothing
+* `unix`: Use Rust's [`escape_default`](https://doc.rust-lang.org/std/primitive.char.html#method.escape_default)
+* `tsv`: Tab Separated Values encode, (escape `\n`, `\t` and `\r`)
+
 # Similar Projects
 
 * [xmlstarlet](https://xmlstar.sourceforge.net/)'s [sel](http://xmlstar.sourceforge.net/doc/UG/ch04.html)/selection functionality was the inspiration. But it's unable to handle large XML
