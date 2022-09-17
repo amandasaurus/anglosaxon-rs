@@ -1,6 +1,6 @@
 # anglosaxon Changelog
 
-## Unreleased
+## 0.2 (2022-09-17)
 
 * Pipe attributes through simple text filters, so your text is escaped properly
 * Support `-v ./ATTR`
